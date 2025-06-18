@@ -125,34 +125,31 @@ def parse_expression(tokens, index):
     
     def parse_factor(tokens, index):
         token_type, token_value = tokens[index]
-        
         if token_type == 'IDENT' and index + 1 < len(tokens) and tokens[index + 1][0] == 'LPAREN':
             func_name = token_value
-            index += 2
+            i = index + 2
             args = []
             current_arg = []
             paren_count = 1
-            while index < len(tokens) and paren_count > 0:
-                if tokens[index][0] == 'LPAREN':
+            while i < len(tokens) and paren_count > 0:
+                if tokens[i][0] == 'LPAREN':
                     paren_count += 1
-                elif tokens[index][0] == 'RPAREN':
+                    current_arg.append(tokens[i])
+                elif tokens[i][0] == 'RPAREN':
                     paren_count -= 1
                     if paren_count == 0:
                         if current_arg:
                             args.append(parse_expression(current_arg, 0))
                         break
-                elif tokens[index][0] == 'COMMA' and paren_count == 1:
-                    if current_arg:
-                        args.append(parse_expression(current_arg, 0))
-                        current_arg = []
+                elif tokens[i][0] == 'COMMA' and paren_count == 1:
+                    args.append(parse_expression(current_arg, 0))
+                    current_arg = []
                 else:
-                    current_arg.append(tokens[index])
-                index += 1
+                    current_arg.append(tokens[i])
+                i += 1
             if paren_count != 0:
                 raise SyntaxError("Unmatched '(' in function call")
-            if not args:
-                raise SyntaxError("Function call must have arguments")
-            return {'type': 'call', 'name': func_name, 'args': args}, index
+            return {'type': 'call', 'name': func_name, 'args': args}, i+1
 
         if token_type == 'NUMBER':
             return {'type': 'literal', 'value': token_value}, index + 1
@@ -369,20 +366,20 @@ def parse(tokens):
         if tokens[-1][0] != 'RPAREN':
             raise SyntaxError("Expected closing ')' in function call")
 
-        argument_tokens = tokens [2:-1]
+        argument_tokens = tokens[2:-1]
         if not argument_tokens:
-            raise SyntaxError("Function call must have arguments")
-        
+            return {'type': 'call','name': tokens[0][1], 'args': []}
         arguements = []
         current = []
         paren_count = 0
         for token in argument_tokens:
             if token[0] == 'LPAREN':
                 paren_count += 1
+                current.append(token)
             elif token[0] == 'RPAREN':
                 paren_count -= 1
-
-            if token[0] == 'COMMA' and paren_count == 0:
+                current.append(token)
+            elif token[0] == 'COMMA' and paren_count == 0:
                 if current:
                     arguements.append(parse_expression(current, 0))
                     current = []
