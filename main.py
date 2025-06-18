@@ -297,17 +297,12 @@ def parse(tokens):
         return None
 
     if tokens[0][0] == 'VAR':
-
         if tokens[1][0] != 'IDENT':
             raise SyntaxError("Expected variable name")
-
         if tokens[2][0] != 'EQUALS':
             raise SyntaxError("Expected '=' symbol")
-
-        if tokens[3][0] not in ('NUMBER', 'STRING', 'IDENT', 'BOOLEAN'):
-            raise SyntaxError("Expected a number, string, or identifier")
-
-        return {'type': 'var_assign', 'name': tokens[1][1], 'value': {'type': 'literal', 'value': tokens[3][1]}}
+        expr_node = parse_expression(tokens[3:], 0)
+        return {'type': 'var_assign', 'name': tokens[1][1], 'value': expr_node}
     
     if tokens[0][0] == 'FUNCTION':
         if tokens[1][0] != 'IDENT':
@@ -561,7 +556,11 @@ def interpert(node, env):
         return node['value']
 
     if node['type'] == 'variable':
-        return env.get(node['name'], 0)
+        var_name = node['name']
+        if var_name in env:
+            return env[var_name]
+        else:
+            raise NameError(f"Variable '{var_name}' is not defined")
 
     if node['type'] == 'var_assign':
         env[node['name']] = interpert(node['value'], env)
