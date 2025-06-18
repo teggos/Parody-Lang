@@ -1,8 +1,8 @@
-function yeah():
-	log("woo hoo")
+var x = 0
 
-repeat(10):
-	yeah()
+input("Say your name: ", x)
+
+log(x)
 
 
 
