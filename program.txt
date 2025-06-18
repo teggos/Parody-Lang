@@ -1,5 +1,8 @@
-var x = 10
-var y = 20
+function yeah():
+	log("woo hoo")
 
 repeat(10):
-	log("yeah")
+	yeah()
+
+
+
