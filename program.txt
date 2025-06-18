@@ -1,8 +1,19 @@
+var z = 0
+
+function add(num1, num2):
+	var z = num1 + num2
+	return (z)
+
 var x = 0
+var y = 0
+var h = 0
 
-input("Say your name: ", x)
 
-log(x)
+input("num 1: ", x)
+input("num 2: ", y)
+
+log(add(x,y))
+
 
 
 

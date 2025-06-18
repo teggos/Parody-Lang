@@ -6,6 +6,10 @@ environment = {}
 
 file_path = os.path.join(os.getcwd(), "program.txt")
 
+class ReturnException(Exception):
+    def __init__(self, value):
+        self.value = value
+
 def tokenize(line):
     tokens = []
     i = 0
@@ -39,7 +43,7 @@ def tokenize(line):
             while i < len(line) and (line[i].isalnum() or line[i] == '_'):
                 ident += line[i]
                 i += 1
-            if ident in ('var', 'log', 'if', 'else', 'while', 'True', 'False', 'repeat', 'function', 'input'):
+            if ident in ('var', 'log', 'if', 'else', 'while', 'True', 'False', 'repeat', 'function', 'input', 'return'):
                 if ident == 'True':
                     tokens.append(('BOOLEAN', True))
                 elif ident == 'False':
@@ -300,7 +304,7 @@ def parse(tokens):
                     break
             
             if paren_count > 0:
-                if tokens[i][0] == 'IDENT':
+                if tokens[i][0] in ('IDENT', 'COMMA'):
                     param_tokens.append(tokens[i])
                 elif tokens[i][0] not in ('COMMA', 'RPAREN'):
                     raise SyntaxError(f"Unexpected token '{tokens[i][1]}' in function parameters")
@@ -349,20 +353,18 @@ def parse(tokens):
                 paren_count += 1
             elif token[0] == 'RPAREN':
                 paren_count -= 1
-            
+
             if token[0] == 'COMMA' and paren_count == 0:
                 if current:
-                    arguements.append(current)
+                    arguements.append(parse_expression(current, 0))
                     current = []
-                elif not current:
+                else:
                     raise SyntaxError("Empty argument in function call")
             else:
                 current.append(token)
-            
-            if current and paren_count == 0:
-                arguements.append(parse_expression(current, 0))
+        if current:
+            arguements.append(parse_expression(current, 0))
 
-        
         return {'type': 'call','name': tokens[0][1], 'args': arguements}
     
     if tokens[0][0] == 'INPUT':
@@ -431,6 +433,18 @@ def parse(tokens):
 
         # Expect a block of statements after ELSE
         return {'type': 'else', 'statement': parse_block(tokens[2:])}
+    
+    if tokens[0][0] == 'RETURN':
+        if len(tokens) < 2 or tokens[1][0] != 'LPAREN' or tokens[-1][0] != 'RPAREN':
+            raise SyntaxError("Expected '(expression)' after 'return'")
+
+        expr_tokens = tokens[2:-1]
+        if not expr_tokens:
+            raise SyntaxError("Empty expression in return statement")
+
+        expr_node = parse_expression(expr_tokens, 0)
+
+        return {'type': 'return', 'value': expr_node}
     
     if tokens[0][0] == 'WHILE':
         if tokens[1][0] != 'LPAREN':
@@ -597,6 +611,7 @@ def interpert(node, env):
             if not int(bool(condition)):
                 break
             interpert(node['statement'], env)
+            
     if node['type'] == 'block':
         for stmt in node['statements']:
             interpert(stmt, env)
@@ -606,6 +621,9 @@ def interpert(node, env):
     if node['type'] == 'function':
         env[node['name']] = node
         return
+    if node['type'] == 'return':
+        value = interpert(node['value'], env)
+        raise ReturnException(value)
     if node['type'] == 'call':
         func_name = node['name']
         if func_name not in env:
@@ -630,11 +648,12 @@ def interpert(node, env):
                 local_env[param[0]] = arg
             else:
                 local_env[param] = arg
-        
-        # Execute the function body
-        interpert(func_node['body'], local_env)
-        
-        return
+
+        try:
+            interpert(func_node['body'], local_env)
+        except ReturnException as ret:
+            return ret.value
+    return None  # If no return statement is encountered
 
 
 
@@ -676,6 +695,7 @@ for group in statements:
                 if else_ast:
                     else_nodes.append(else_ast)
             ast['else'] = {'type': 'block', 'statements': else_nodes}
+        
         
     if ast and ast['type'] == 'function':
             block_nodes = []
