@@ -125,6 +125,34 @@ def parse_expression(tokens, index):
     
     def parse_factor(tokens, index):
         token_type, token_value = tokens[index]
+        
+        if token_type == 'IDENT' and index + 1 < len(tokens) and tokens[index + 1][0] == 'LPAREN':
+            func_name = token_value
+            index += 2
+            args = []
+            current_arg = []
+            paren_count = 1
+            while index < len(tokens) and paren_count > 0:
+                if tokens[index][0] == 'LPAREN':
+                    paren_count += 1
+                elif tokens[index][0] == 'RPAREN':
+                    paren_count -= 1
+                    if paren_count == 0:
+                        if current_arg:
+                            args.append(parse_expression(current_arg, 0))
+                        break
+                elif tokens[index][0] == 'COMMA' and paren_count == 1:
+                    if current_arg:
+                        args.append(parse_expression(current_arg, 0))
+                        current_arg = []
+                else:
+                    current_arg.append(tokens[index])
+                index += 1
+            if paren_count != 0:
+                raise SyntaxError("Unmatched '(' in function call")
+            if not args:
+                raise SyntaxError("Function call must have arguments")
+            return {'type': 'call', 'name': func_name, 'args': args}, index
 
         if token_type == 'NUMBER':
             return {'type': 'literal', 'value': token_value}, index + 1
@@ -435,15 +463,14 @@ def parse(tokens):
         return {'type': 'else', 'statement': parse_block(tokens[2:])}
     
     if tokens[0][0] == 'RETURN':
-        if len(tokens) < 2 or tokens[1][0] != 'LPAREN' or tokens[-1][0] != 'RPAREN':
-            raise SyntaxError("Expected '(expression)' after 'return'")
-
-        expr_tokens = tokens[2:-1]
+        # Handle both: return z  and  return (z)
+        if len(tokens) >= 3 and tokens[1][0] == 'LPAREN' and tokens[-1][0] == 'RPAREN':
+            expr_tokens = tokens[2:-1]
+        else:
+            expr_tokens = tokens[1:]
         if not expr_tokens:
             raise SyntaxError("Empty expression in return statement")
-
         expr_node = parse_expression(expr_tokens, 0)
-
         return {'type': 'return', 'value': expr_node}
     
     if tokens[0][0] == 'WHILE':
