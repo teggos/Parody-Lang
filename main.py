@@ -39,7 +39,7 @@ def tokenize(line):
             while i < len(line) and (line[i].isalnum() or line[i] == '_'):
                 ident += line[i]
                 i += 1
-            if ident in ('var', 'log', 'if', 'else', 'while', 'True', 'False', 'repeat'):
+            if ident in ('var', 'log', 'if', 'else', 'while', 'True', 'False', 'repeat', 'function', 'input'):
                 if ident == 'True':
                     tokens.append(('BOOLEAN', True))
                 elif ident == 'False':
@@ -87,6 +87,8 @@ def tokenize(line):
             tokens.append(('DIVIDE', '/'))
         elif char == ':':
             tokens.append(('COLON', ':'))
+        elif char == ',':
+            tokens.append(('COMMA', ','))
         elif char == '<':
             if i + 1 < len(line) and line[i + 1] == '=':
                 tokens.append(('LESS_EQUAL', '<='))
@@ -278,6 +280,117 @@ def parse(tokens):
 
         return {'type': 'var_assign', 'name': tokens[1][1], 'value': {'type': 'literal', 'value': tokens[3][1]}}
     
+    if tokens[0][0] == 'FUNCTION':
+        if tokens[1][0] != 'IDENT':
+            raise SyntaxError("Expected function name after 'function'")
+        
+        func_name = tokens[1][1]
+        
+        if tokens[2][0] != 'LPAREN':
+            raise SyntaxError("Expected '(' after function name")
+        paren_count = 1
+        i = 3
+        param_tokens = []
+        while i < len(tokens) and paren_count > 0:
+            if tokens[i][0] == 'LPAREN':
+                paren_count += 1
+            elif tokens[i][0] == 'RPAREN':
+                paren_count -= 1
+                if paren_count == 0:
+                    break
+            
+            if paren_count > 0:
+                if tokens[i][0] == 'IDENT':
+                    param_tokens.append(tokens[i])
+                elif tokens[i][0] not in ('COMMA', 'RPAREN'):
+                    raise SyntaxError(f"Unexpected token '{tokens[i][1]}' in function parameters")
+            i += 1
+        if paren_count != 0:
+            raise SyntaxError("Unmatched '(' in function definition")
+        
+        params = []
+        temp = None
+
+        for token_type, token_value in param_tokens:
+            if token_type == 'IDENT':
+                if temp is not None:
+            
+                    raise SyntaxError("Expected ',' between parameters")
+                temp = token_value  
+            elif token_type == 'COMMA':
+                if temp is None:
+                    raise SyntaxError("Unexpected comma in function parameters")
+                params.append(temp)
+                temp = None
+            else:
+                raise SyntaxError(f"Unexpected token '{token_type}' in function parameters")
+        if temp is not None:
+            params.append(temp)
+
+        
+        if i + 1 >= len(tokens) or tokens[i+1][0] != 'COLON':
+            raise SyntaxError("Expected ':' after function parameters")
+        
+        return {'type': 'function', 'name': func_name, 'params': params, 'body': None}
+    
+    if tokens[0][0] == 'IDENT' and len(tokens) > 1 and tokens[1][0] == 'LPAREN':
+        if tokens[-1][0] != 'RPAREN':
+            raise SyntaxError("Expected closing ')' in function call")
+
+        argument_tokens = tokens [2:-1]
+        if not argument_tokens:
+            raise SyntaxError("Function call must have arguments")
+        
+        arguements = []
+        current = []
+        paren_count = 0
+        for token in argument_tokens:
+            if token[0] == 'LPAREN':
+                paren_count += 1
+            elif token[0] == 'RPAREN':
+                paren_count -= 1
+            
+            if token[0] == 'COMMA' and paren_count == 0:
+                if current:
+                    arguements.append(current)
+                    current = []
+                elif not current:
+                    raise SyntaxError("Empty argument in function call")
+            else:
+                current.append(token)
+            
+            if current and paren_count == 0:
+                arguements.append(parse_expression(current, 0))
+
+        
+        return {'type': 'call','name': tokens[0][1], 'args': arguements}
+    
+    if tokens[0][0] == 'INPUT':
+        if tokens[1][0] != 'LPAREN' or tokens[-1][0] != 'RPAREN':
+            raise SyntaxError("Expected closed parentheses for input statement")
+
+        comma_index = None
+        for i in range(2, len(tokens) - 1):
+            if tokens[i][0] == 'COMMA':
+                comma_index = i
+                break
+        if comma_index is None:
+            raise SyntaxError("Expected ',' in input statement")
+        
+        if tokens[4][0] != 'IDENT':
+            raise SyntaxError("Expected variable name after input expression")
+        
+        expr_tokens = tokens[2:comma_index]
+        
+        if not expr_tokens:
+            raise SyntaxError("Empty expression in input statement")
+        
+        var = tokens[4][1]
+        
+        expr_node = parse_expression(expr_tokens, 0)
+
+        return {'type': 'input', 'prompt': expr_node, 'variable': var}
+    
     
 
     if tokens[0][0] == 'IF':
@@ -396,18 +509,37 @@ def parse(tokens):
 
         
 def interpert(node, env):
+    
     if node is None:
         return None
+    # Add this at the top of your function
+    if isinstance(node, list):
+        results = []
+        for n in node:
+            results.append(interpert(n, env))
+        return results
 
     if node['type'] == 'literal':
-        val = node['value']
-        if isinstance(val, str) and val in env:
-            return env.get(val, 0)
-        else:
-            return val
+        return node['value']
+
+    if node['type'] == 'variable':
+        return env.get(node['name'], 0)
 
     if node['type'] == 'var_assign':
         env[node['name']] = interpert(node['value'], env)
+        return
+    
+    if node['type'] == 'input':
+        if node['variable'] not in env:
+            raise NameError(f"Variable '{node['variable']}' is not defined")
+        prompt = interpert(node['prompt'], env)
+        user_input = input(prompt + " ")
+        
+        try:
+            value = int(user_input)
+        except ValueError:
+            value = user_input.strip('"')
+        env[node['variable']] = value
         return
 
     if node['type'] == 'assignment':
@@ -468,8 +600,41 @@ def interpert(node, env):
     if node['type'] == 'block':
         for stmt in node['statements']:
             interpert(stmt, env)
-    if node['type'] == 'variable':
-        return env.get(node['name'], 0)
+    if node['type'] == 'else':
+        for stmt in node['statement']['statements']:
+            interpert(stmt, env)
+    if node['type'] == 'function':
+        env[node['name']] = node
+        return
+    if node['type'] == 'call':
+        func_name = node['name']
+        if func_name not in env:
+            raise NameError(f"Function '{func_name}' is not defined")
+        
+        func_node = env[func_name]
+        if func_node['type'] != 'function':
+            raise TypeError(f"'{func_name}' is not a function")
+        
+        
+        arguement_vals = [interpert(arg, env) for arg in node['args']]
+        
+        local_env = env.copy()
+        
+        if len(func_node['params']) != len(arguement_vals):
+            raise TypeError(f"Function '{func_name}' expects {len(func_node['params'])} arguments, got {len(arguement_vals)}")
+        
+        for param, arg in zip(func_node['params'], arguement_vals):
+            if isinstance(param, list):
+                if len(param) != 1:
+                    raise SyntaxError(f"Invalid parameter format: {param}")
+                local_env[param[0]] = arg
+            else:
+                local_env[param] = arg
+        
+        # Execute the function body
+        interpert(func_node['body'], local_env)
+        
+        return
 
 
 
@@ -511,5 +676,24 @@ for group in statements:
                 if else_ast:
                     else_nodes.append(else_ast)
             ast['else'] = {'type': 'block', 'statements': else_nodes}
+        
+    if ast and ast['type'] == 'function':
+            block_nodes = []
+            for line in body_lines:
+                body_tokens = tokenize(line)
+                body_ast = parse(body_tokens)
+                if body_ast:
+                    block_nodes.append(body_ast)
+            ast['body'] = {'type': 'block', 'statements': block_nodes}
+    
+    elif ast and ast['type'] == 'block':
+        block_nodes = []
+        for line in body_lines:
+            body_tokens = tokenize(line)
+            body_ast = parse(body_tokens)
+            if body_ast:
+                block_nodes.append(body_ast)
+        ast['statements'] = block_nodes
+
 
     interpert(ast, environment)

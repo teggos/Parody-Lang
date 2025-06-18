@@ -1,0 +1,8 @@
+var x = 0
+
+input("Say your name: ", x)
+
+log(x)
+
+
+
