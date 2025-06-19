@@ -114,6 +114,10 @@ def tokenize(line):
                 i += 1
             else:
                 tokens.append(('NOT', '!'))
+        elif char == '[':
+            tokens.append(('LBRACKET', '['))
+        elif char == ']':
+            tokens.append(('RBRACKET', ']'))
             
         else:
             raise SyntaxError(f"Unexpected character '{char}' at position {i}")
@@ -153,6 +157,38 @@ def parse_expression(tokens, index):
             if paren_count != 0:
                 raise SyntaxError("Unmatched '(' in function call")
             return {'type': 'call', 'name': func_name, 'args': args}, i+1
+        
+        if token_type =='LBRACKET':
+            i = index + 1
+            elements = []
+            current_element = []
+            bracket_count = 1
+            while i < len(tokens) and bracket_count > 0:
+                if tokens[i][0] == 'LBRACKET':
+                    bracket_count += 1
+                    current_element.append(tokens[i])
+                elif tokens[i][0] == 'RBRACKET':
+                    bracket_count -= 1
+                    if bracket_count == 0:
+                        if current_element:
+                            elem_node, _ = parse_expression(current_element, 0)
+                            elements.append(elem_node)
+                        break
+                    else:
+                        current_element.append(tokens[i])
+                elif tokens[i][0] == 'COMMA' and bracket_count == 1:
+                    if current_element:
+                        elem_node, _ = parse_expression(current_element, 0)
+                        elements.append(elem_node)
+                        current_element = []
+                else:
+                    current_element.append(tokens[i])
+                i += 1
+            
+            if i >= len(tokens) or tokens[i][0] != 'RBRACKET':
+                raise SyntaxError("Expected ']' to close list")
+            
+            return {'type': 'list', 'elements': elements}, i + 1
 
         if token_type == 'NUMBER':
             return {'type': 'literal', 'value': token_value}, index + 1
@@ -666,6 +702,8 @@ def interpert(node, env):
         
         if len(func_node['params']) != len(arguement_vals):
             raise TypeError(f"Function '{func_name}' expects {len(func_node['params'])} arguments, got {len(arguement_vals)}")
+    
+    
         
         for param, arg in zip(func_node['params'], arguement_vals):
             if isinstance(param, list):
@@ -679,6 +717,16 @@ def interpert(node, env):
             interpert(func_node['body'], local_env)
         except ReturnException as ret:
             return ret.value
+        
+    if node['type'] == 'list':
+        elements = [interpert(elem, env) for elem in node['elements']]
+        return elements
+    
+    if node['type'] == 'index':
+        lst = interpert(node['list'], env)
+        index = interpert(node['index'], env)
+        return lst[index]
+    
     return None  # If no return statement is encountered
 
 
